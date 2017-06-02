@@ -67,7 +67,9 @@ func (mr *MapReduce) RunMaster() *list.List {
 	go func() {
 		for i := 0; i < mr.nReduce; i++ {
 			args := &DoJobArgs{mr.file, Reduce, i, mr.nMap}
-			go submitJob(args)
+			go func(args *DoJobArgs) {
+				submitJob(args)
+			}(args)
 		}
 	}()
 

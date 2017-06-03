@@ -2,6 +2,7 @@ package mapreduce
 
 import "container/list"
 import "fmt"
+import "sync"
 
 type WorkerInfo struct {
 	address string
@@ -29,34 +30,45 @@ func (mr *MapReduce) KillWorkers() *list.List {
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
 	mr.Workers = make(map[string]*WorkerInfo)
+	var mu sync.Mutex
+
 	done := make(chan bool)
+	work := make(chan *DoJobArgs)
 
-	var submitJob func(args *DoJobArgs)
-	submitJob = func(args *DoJobArgs) {
-		worker := <-mr.registerChannel
-		if _, ok := mr.Workers[worker]; !ok {
-			mr.Workers[worker] = &WorkerInfo{worker}
-		}
-
-		var res DoJobReply
-		ok := call(worker, "Worker.DoJob", args, &res)
-		if ok {
-			done <- true
-			mr.registerChannel <- worker
-		} else {
-			fmt.Printf("DoJob: RPC %s Job error\n", worker)
-			delete(mr.Workers, worker)
-			// recursively keep trying with a different worker
-			submitJob(args)
+	startWorker := func(worker string) {
+		for {
+			args := <-work
+			var res DoJobReply
+			ok := call(worker, "Worker.DoJob", args, &res)
+			if ok {
+				done <- true
+			} else {
+				fmt.Printf("DoJob: RPC %s Job error\n", worker)
+				delete(mr.Workers, worker)
+				// add work back to the work channel
+				work <- args
+				break
+			}
 		}
 	}
 
 	go func() {
+		for {
+			worker := <-mr.registerChannel
+			if _, ok := mr.Workers[worker]; !ok {
+				mu.Lock()
+				mr.Workers[worker] = &WorkerInfo{worker}
+				mu.Unlock()
+			}
+
+			go startWorker(worker)
+		}
+	}()
+
+	go func() {
 		for i := 0; i < mr.nMap; i++ {
 			args := &DoJobArgs{mr.file, Map, i, mr.nReduce}
-			go func(args *DoJobArgs) {
-				submitJob(args)
-			}(args)
+			work <- args
 		}
 	}()
 
@@ -67,9 +79,7 @@ func (mr *MapReduce) RunMaster() *list.List {
 	go func() {
 		for i := 0; i < mr.nReduce; i++ {
 			args := &DoJobArgs{mr.file, Reduce, i, mr.nMap}
-			go func(args *DoJobArgs) {
-				submitJob(args)
-			}(args)
+			work <- args
 		}
 	}()
 
@@ -77,59 +87,5 @@ func (mr *MapReduce) RunMaster() *list.List {
 		<-done
 	}
 
-	close(done)
 	return mr.KillWorkers()
 }
-
-// one more way would be to keep track of all the number of jobs remaining instead of creating a chan
-
-// func (mr *MapReduce) RunMaster() *list.List {
-// 	// Your code here
-// 	mr.Workers = make(map[string]*WorkerInfo)
-//
-// 	findWorker := func() (worker string) {
-// 		worker = <-mr.registerChannel
-// 		if _, ok := mr.Workers[worker]; !ok {
-// 			mr.Workers[worker] = &WorkerInfo{worker}
-// 		}
-// 		return
-// 	}
-//
-// 	var submitJob func(worker string, args *DoJobArgs)
-// 	submitJob = func(worker string, args *DoJobArgs) {
-// 		var res DoJobReply
-//
-// 		ok := call(worker, "Worker.DoJob", args, &res)
-// 		if ok {
-// 			mr.registerChannel <- worker
-// 		} else {
-// 			fmt.Printf("DoJob: RPC %s Job error\n", worker)
-// 			delete(mr.Workers, worker)
-//
-// 			// recursively keep trying with a different worker
-// 			worker := findWorker()
-// 			submitJob(worker, args)
-// 		}
-// 	}
-//
-// 	// assign unique job id
-// 	maps, reduce := 0, 0
-// 	for reduce != mr.nReduce {
-// 		worker := findWorker()
-//
-// 		var args *DoJobArgs
-// 		if maps != mr.nMap {
-// 			args = &DoJobArgs{mr.file, Map, maps, mr.nReduce}
-// 			maps += 1
-// 		} else {
-// 			args = &DoJobArgs{mr.file, Reduce, reduce, mr.nMap}
-// 			reduce += 1
-// 		}
-//
-// 		go func(worker string, args *DoJobArgs) {
-// 			submitJob(worker, args)
-// 		}(worker, args)
-// 	}
-//
-// 	return mr.KillWorkers()
-// }

@@ -2,7 +2,6 @@ package mapreduce
 
 import "container/list"
 import "fmt"
-import "sync"
 
 type WorkerInfo struct {
 	address string
@@ -30,38 +29,53 @@ func (mr *MapReduce) KillWorkers() *list.List {
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
 	mr.Workers = make(map[string]*WorkerInfo)
-	var mu sync.Mutex
 
+	// marks completion of one job
 	done := make(chan bool)
+	// finish using one worker
+	finish := make(chan bool)
+	// done processing all jobs
+	quit := make(chan bool)
+
 	work := make(chan *DoJobArgs)
 
 	startWorker := func(worker string) {
+	loop:
 		for {
-			args := <-work
-			var res DoJobReply
-			ok := call(worker, "Worker.DoJob", args, &res)
-			if ok {
-				done <- true
-			} else {
-				fmt.Printf("DoJob: RPC %s Job error\n", worker)
-				delete(mr.Workers, worker)
-				// add work back to the work channel
-				work <- args
-				break
+			select {
+			case args := <-work:
+				var res DoJobReply
+				ok := call(worker, "Worker.DoJob", args, &res)
+				if ok {
+					done <- true
+				} else {
+					fmt.Printf("DoJob: RPC %s Job error\n", worker)
+					delete(mr.Workers, worker)
+					// add work back to the work channel
+					work <- args
+					break loop
+				}
+			case <-finish:
+				break loop
 			}
 		}
 	}
 
 	go func() {
+	loop:
 		for {
-			worker := <-mr.registerChannel
-			if _, ok := mr.Workers[worker]; !ok {
-				mu.Lock()
+			select {
+			case worker := <-mr.registerChannel:
 				mr.Workers[worker] = &WorkerInfo{worker}
-				mu.Unlock()
+				go startWorker(worker)
+			case <-quit:
+				for _, _ = range mr.Workers {
+					finish <- true
+				}
+				close(finish)
+				close(work)
+				break loop
 			}
-
-			go startWorker(worker)
 		}
 	}()
 
@@ -86,6 +100,10 @@ func (mr *MapReduce) RunMaster() *list.List {
 	for i := 0; i < mr.nReduce; i++ {
 		<-done
 	}
+
+	quit <- true
+	close(quit)
+	close(done)
 
 	return mr.KillWorkers()
 }

@@ -67,7 +67,9 @@ func (mr *MapReduce) RunMaster() *list.List {
 			select {
 			case worker := <-mr.registerChannel:
 				mr.Workers[worker] = &WorkerInfo{worker}
-				go startWorker(worker)
+				go func(worker string) {
+					startWorker(worker)
+				}(worker)
 			case <-quit:
 				for _, _ = range mr.Workers {
 					finish <- true

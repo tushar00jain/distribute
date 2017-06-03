@@ -1,0 +1,60 @@
+func (mr *MapReduce) RunMaster() *list.List {
+	// Your code here
+	mr.Workers = make(map[string]*WorkerInfo)
+
+	var mu sync.Mutex
+	done := make(chan bool)
+
+	var submitJob func(args *DoJobArgs)
+	submitJob = func(args *DoJobArgs) {
+		worker := <-mr.registerChannel
+		if _, ok := mr.Workers[worker]; !ok {
+			mu.Lock()
+			mr.Workers[worker] = &WorkerInfo{worker}
+			mu.Unlock()
+		}
+
+		var res DoJobReply
+		ok := call(worker, "Worker.DoJob", args, &res)
+		if ok {
+			// need to interchange the lines if mr.registerChannel is not buffered
+			// mr.registerChannel should be buffered with length 2 so that it does not block on the last operation
+			mr.registerChannel <- worker
+			done <- true
+		} else {
+			fmt.Printf("DoJob: RPC %s Job error\n", worker)
+			delete(mr.Workers, worker)
+			// recursively keep trying with a different worker
+			submitJob(args)
+		}
+	}
+
+	go func() {
+		for i := 0; i < mr.nMap; i++ {
+			args := &DoJobArgs{mr.file, Map, i, mr.nReduce}
+			go func(args *DoJobArgs) {
+				submitJob(args)
+			}(args)
+		}
+	}()
+
+	for i := 0; i < mr.nMap; i++ {
+		<-done
+	}
+
+	go func() {
+		for i := 0; i < mr.nReduce; i++ {
+			args := &DoJobArgs{mr.file, Reduce, i, mr.nMap}
+			go func(args *DoJobArgs) {
+				submitJob(args)
+			}(args)
+		}
+	}()
+
+	for i := 0; i < mr.nReduce; i++ {
+		<-done
+	}
+
+	close(done)
+	return mr.KillWorkers()
+}

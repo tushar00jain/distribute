@@ -1,0 +1,55 @@
+func (mr *MapReduce) RunMaster() *list.List {
+	// Your code here
+	var mu sync.Mutex
+
+	mr.Workers = make(map[string]*WorkerInfo)
+
+	findWorker := func() (worker string) {
+		worker = <-mr.registerChannel
+		if _, ok := mr.Workers[worker]; !ok {
+			mu.Lock()
+			mr.Workers[worker] = &WorkerInfo{worker}
+			mu.Unlock()
+		}
+		return
+	}
+
+	var submitJob func(worker string, args *DoJobArgs)
+	submitJob = func(worker string, args *DoJobArgs) {
+		var res DoJobReply
+
+		ok := call(worker, "Worker.DoJob", args, &res)
+		if ok {
+			// there will be nothing listening on the channel after the last reduce operation
+			mr.registerChannel <- worker
+		} else {
+			fmt.Printf("DoJob: RPC %s Job error\n", worker)
+			delete(mr.Workers, worker)
+
+			// recursively keep trying with a different worker
+			worker := findWorker()
+			submitJob(worker, args)
+		}
+	}
+
+	// assign unique job id
+	maps, reduce := 0, 0
+	for reduce != mr.nReduce {
+		worker := findWorker()
+
+		var args *DoJobArgs
+		if maps != mr.nMap {
+			args = &DoJobArgs{mr.file, Map, maps, mr.nReduce}
+			maps += 1
+		} else {
+			args = &DoJobArgs{mr.file, Reduce, reduce, mr.nMap}
+			reduce += 1
+		}
+
+		go func(worker string, args *DoJobArgs) {
+			submitJob(worker, args)
+		}(worker, args)
+	}
+
+	return mr.KillWorkers()
+}

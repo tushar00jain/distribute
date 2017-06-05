@@ -107,8 +107,10 @@ func (ck *Clerk) Get(key string) string {
 	for {
 		ok := call(ck.primary, "PBServer.Get", args, &reply)
 
-		if ok && reply.Err != ErrWrongServer {
-			break
+		if ok {
+			if reply.Err != ErrBackup && reply.Err != ErrWrongServer {
+				break
+			}
 		}
 
 		reply.Err = ""
@@ -135,8 +137,10 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 	for {
 		ok := call(ck.primary, "PBServer.Put", args, &reply)
 
-		if ok && reply.Err != ErrWrongServer {
-			break
+		if ok {
+			if reply.Err != ErrBackup && reply.Err != ErrWrongServer {
+				break
+			}
 		}
 
 		reply.Err = ""

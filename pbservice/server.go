@@ -74,9 +74,9 @@ func (pb *PBServer) copy() {
 	fmt.Println("Backup Copy failed")
 }
 
-func (pb *PBServer) replicateGet(args *GetArgs, method string) {
+func (pb *PBServer) replicateGet(args *GetArgs, method string) bool {
 	if pb.view.Backup == "" {
-		return
+		return true
 	}
 
 	var reply GetReply
@@ -85,15 +85,15 @@ func (pb *PBServer) replicateGet(args *GetArgs, method string) {
 	ok := call(pb.view.Backup, method, bargs, &reply)
 
 	if ok {
-		return
+		return true
 	}
 
-	fmt.Println("Backup Get failed")
+	return false
 }
 
-func (pb *PBServer) replicatePut(args *PutArgs, method string) {
+func (pb *PBServer) replicatePut(args *PutArgs, method string) bool {
 	if pb.view.Backup == "" {
-		return
+		return true
 	}
 
 	var breply PutReply
@@ -102,10 +102,10 @@ func (pb *PBServer) replicatePut(args *PutArgs, method string) {
 	ok := call(pb.view.Backup, method, bargs, &breply)
 
 	if ok {
-		return
+		return true
 	}
 
-	fmt.Println("Backup Put failed")
+	return false
 }
 
 func (pb *PBServer) get(args *GetArgs, reply *GetReply) {
@@ -173,8 +173,13 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
 	if pb.view.Primary == pb.me {
 		// primary server
-		pb.replicateGet(args, "PBServer.Get")
-		pb.get(args, reply)
+		if pb.replicateGet(args, "PBServer.Get") {
+			// continue if replicated
+			pb.get(args, reply)
+		} else {
+			reply.Value = ""
+			reply.Err = ErrBackup
+		}
 	} else if pb.view.Backup == pb.me {
 		// backup server
 		if pb.view.Primary == args.Me {
@@ -201,8 +206,13 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 
 	if pb.view.Primary == pb.me {
 		// primary server
-		pb.replicatePut(args, "PBServer.Put")
-		pb.put(args, reply)
+		if pb.replicatePut(args, "PBServer.Put") {
+			// continue if replicated
+			pb.put(args, reply)
+		} else {
+			reply.PreviousValue = ""
+			reply.Err = ErrBackup
+		}
 	} else if pb.view.Backup == pb.me {
 		// backup server
 		if pb.view.Primary == args.Me {

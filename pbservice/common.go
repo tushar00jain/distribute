@@ -6,7 +6,7 @@ const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongServer = "ErrWrongServer"
-	ErrNoCopy      = "ErrNoCopy"
+	ErrBackup      = "ErrBackup"
 )
 
 type Err string

@@ -32,260 +32,260 @@ func port(tag string, host int) string {
 	return s
 }
 
-// func TestBasicFail(t *testing.T) {
-// 	runtime.GOMAXPROCS(4)
-//
-// 	tag := "basic"
-// 	vshost := port(tag+"v", 1)
-// 	vs := viewservice.StartServer(vshost)
-// 	time.Sleep(time.Second)
-// 	vck := viewservice.MakeClerk("", vshost)
-//
-// 	ck := MakeClerk(vshost, "")
-//
-// 	fmt.Printf("Test: Single primary, no backup ...\n")
-//
-// 	s1 := StartServer(vshost, port(tag, 1))
-//
-// 	deadtime := viewservice.PingInterval * viewservice.DeadPings
-// 	time.Sleep(deadtime * 2)
-// 	if vck.Primary() != s1.me {
-// 		t.Fatal("first primary never formed view")
-// 	}
-//
-// 	ck.Put("111", "v1")
-// 	check(ck, "111", "v1")
-//
-// 	ck.Put("2", "v2")
-// 	check(ck, "2", "v2")
-//
-// 	ck.Put("1", "v1a")
-// 	check(ck, "1", "v1a")
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	// add a backup
-//
-// 	fmt.Printf("Test: Add a backup ...\n")
-//
-// 	s2 := StartServer(vshost, port(tag, 2))
-// 	for i := 0; i < viewservice.DeadPings*2; i++ {
-// 		v, _ := vck.Get()
-// 		if v.Backup == s2.me {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	v, _ := vck.Get()
-// 	if v.Backup != s2.me {
-// 		t.Fatal("backup never came up")
-// 	}
-//
-// 	ck.Put("3", "33")
-// 	check(ck, "3", "33")
-//
-// 	// give the backup time to initialize
-// 	time.Sleep(3 * viewservice.PingInterval)
-//
-// 	ck.Put("4", "44")
-// 	check(ck, "4", "44")
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	// kill the primary
-//
-// 	fmt.Printf("Test: Primary failure ...\n")
-//
-// 	s1.kill()
-// 	for i := 0; i < viewservice.DeadPings*2; i++ {
-// 		v, _ := vck.Get()
-// 		if v.Primary == s2.me {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	v, _ = vck.Get()
-// 	if v.Primary != s2.me {
-// 		t.Fatal("backup never switched to primary")
-// 	}
-//
-// 	check(ck, "1", "v1a")
-// 	check(ck, "3", "33")
-// 	check(ck, "4", "44")
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	// kill solo server, start new server, check that
-// 	// it does not start serving as primary
-//
-// 	fmt.Printf("Test: Kill last server, new one should not be active ...\n")
-//
-// 	s2.kill()
-// 	s3 := StartServer(vshost, port(tag, 3))
-// 	time.Sleep(1 * time.Second)
-// 	get_done := false
-// 	go func() {
-// 		ck.Get("1")
-// 		get_done = true
-// 	}()
-// 	time.Sleep(2 * time.Second)
-// 	if get_done {
-// 		t.Fatalf("ck.Get() returned even though no initialized primary")
-// 	}
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	s1.kill()
-// 	s2.kill()
-// 	s3.kill()
-// 	time.Sleep(time.Second)
-// 	vs.Kill()
-// 	time.Sleep(time.Second)
-// }
-//
-// func TestAtMostOnce(t *testing.T) {
-// 	runtime.GOMAXPROCS(4)
-//
-// 	tag := "csu"
-// 	vshost := port(tag+"v", 1)
-// 	vs := viewservice.StartServer(vshost)
-// 	time.Sleep(time.Second)
-// 	vck := viewservice.MakeClerk("", vshost)
-//
-// 	fmt.Printf("Test: at-most-once Put; unreliable ...\n")
-//
-// 	const nservers = 1
-// 	var sa [nservers]*PBServer
-// 	for i := 0; i < nservers; i++ {
-// 		sa[i] = StartServer(vshost, port(tag, i+1))
-// 		sa[i].unreliable = true
-// 	}
-//
-// 	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
-// 		view, _ := vck.Get()
-// 		if view.Primary != "" && view.Backup != "" {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-//
-// 	// give p+b time to ack, initialize
-// 	time.Sleep(viewservice.PingInterval * viewservice.DeadPings)
-//
-// 	ck := MakeClerk(vshost, "")
-// 	k := "counter"
-// 	val := ""
-// 	for i := 0; i < 100; i++ {
-// 		v := strconv.Itoa(i)
-// 		pv := ck.PutHash(k, v)
-// 		if pv != val {
-// 			t.Fatalf("ck.Puthash() returned %v but expected %v\n", pv, val)
-// 		}
-// 		h := hash(val + v)
-// 		val = strconv.Itoa(int(h))
-// 	}
-//
-// 	v := ck.Get(k)
-// 	if v != val {
-// 		t.Fatalf("ck.Get() returned %v but expected %v\n", v, val)
-// 	}
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	for i := 0; i < nservers; i++ {
-// 		sa[i].kill()
-// 	}
-// 	time.Sleep(time.Second)
-// 	vs.Kill()
-// 	time.Sleep(time.Second)
-// }
-//
-// // Put right after a backup dies.
-// func TestFailPut(t *testing.T) {
-// 	runtime.GOMAXPROCS(4)
-//
-// 	tag := "failput"
-// 	vshost := port(tag+"v", 1)
-// 	vs := viewservice.StartServer(vshost)
-// 	time.Sleep(time.Second)
-// 	vck := viewservice.MakeClerk("", vshost)
-//
-// 	s1 := StartServer(vshost, port(tag, 1))
-// 	time.Sleep(time.Second)
-// 	s2 := StartServer(vshost, port(tag, 2))
-// 	time.Sleep(time.Second)
-// 	s3 := StartServer(vshost, port(tag, 3))
-//
-// 	for i := 0; i < viewservice.DeadPings*3; i++ {
-// 		v, _ := vck.Get()
-// 		if v.Primary != "" && v.Backup != "" {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	time.Sleep(time.Second) // wait for backup initializion
-// 	v1, _ := vck.Get()
-// 	if v1.Primary != s1.me || v1.Backup != s2.me {
-// 		t.Fatalf("wrong primary or backup")
-// 	}
-//
-// 	ck := MakeClerk(vshost, "")
-//
-// 	ck.Put("a", "aa")
-// 	ck.Put("b", "bb")
-// 	ck.Put("c", "cc")
-// 	check(ck, "a", "aa")
-// 	check(ck, "b", "bb")
-// 	check(ck, "c", "cc")
-//
-// 	// kill backup, then immediate Put
-// 	fmt.Printf("Test: Put() immediately after backup failure ...\n")
-// 	s2.kill()
-// 	ck.Put("a", "aaa")
-// 	check(ck, "a", "aaa")
-//
-// 	for i := 0; i < viewservice.DeadPings*3; i++ {
-// 		v, _ := vck.Get()
-// 		if v.Viewnum > v1.Viewnum && v.Primary != "" && v.Backup != "" {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	time.Sleep(time.Second) // wait for backup initialization
-// 	v2, _ := vck.Get()
-// 	if v2.Primary != s1.me || v2.Backup != s3.me {
-// 		t.Fatal("wrong primary or backup")
-// 	}
-//
-// 	check(ck, "a", "aaa")
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	// kill primary, then immediate Put
-// 	fmt.Printf("Test: Put() immediately after primary failure ...\n")
-// 	s1.kill()
-// 	ck.Put("b", "bbb")
-// 	check(ck, "b", "bbb")
-//
-// 	for i := 0; i < viewservice.DeadPings*3; i++ {
-// 		v, _ := vck.Get()
-// 		if v.Viewnum > v2.Viewnum && v.Primary != "" {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	time.Sleep(time.Second)
-//
-// 	check(ck, "a", "aaa")
-// 	check(ck, "b", "bbb")
-// 	check(ck, "c", "cc")
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	s1.kill()
-// 	s2.kill()
-// 	s3.kill()
-// 	time.Sleep(viewservice.PingInterval * 2)
-// 	vs.Kill()
-// }
+func TestBasicFail(t *testing.T) {
+	runtime.GOMAXPROCS(4)
+
+	tag := "basic"
+	vshost := port(tag+"v", 1)
+	vs := viewservice.StartServer(vshost)
+	time.Sleep(time.Second)
+	vck := viewservice.MakeClerk("", vshost)
+
+	ck := MakeClerk(vshost, "")
+
+	fmt.Printf("Test: Single primary, no backup ...\n")
+
+	s1 := StartServer(vshost, port(tag, 1))
+
+	deadtime := viewservice.PingInterval * viewservice.DeadPings
+	time.Sleep(deadtime * 2)
+	if vck.Primary() != s1.me {
+		t.Fatal("first primary never formed view")
+	}
+
+	ck.Put("111", "v1")
+	check(ck, "111", "v1")
+
+	ck.Put("2", "v2")
+	check(ck, "2", "v2")
+
+	ck.Put("1", "v1a")
+	check(ck, "1", "v1a")
+
+	fmt.Printf("  ... Passed\n")
+
+	// add a backup
+
+	fmt.Printf("Test: Add a backup ...\n")
+
+	s2 := StartServer(vshost, port(tag, 2))
+	for i := 0; i < viewservice.DeadPings*2; i++ {
+		v, _ := vck.Get()
+		if v.Backup == s2.me {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	v, _ := vck.Get()
+	if v.Backup != s2.me {
+		t.Fatal("backup never came up")
+	}
+
+	ck.Put("3", "33")
+	check(ck, "3", "33")
+
+	// give the backup time to initialize
+	time.Sleep(3 * viewservice.PingInterval)
+
+	ck.Put("4", "44")
+	check(ck, "4", "44")
+
+	fmt.Printf("  ... Passed\n")
+
+	// kill the primary
+
+	fmt.Printf("Test: Primary failure ...\n")
+
+	s1.kill()
+	for i := 0; i < viewservice.DeadPings*2; i++ {
+		v, _ := vck.Get()
+		if v.Primary == s2.me {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	v, _ = vck.Get()
+	if v.Primary != s2.me {
+		t.Fatal("backup never switched to primary")
+	}
+
+	check(ck, "1", "v1a")
+	check(ck, "3", "33")
+	check(ck, "4", "44")
+
+	fmt.Printf("  ... Passed\n")
+
+	// kill solo server, start new server, check that
+	// it does not start serving as primary
+
+	fmt.Printf("Test: Kill last server, new one should not be active ...\n")
+
+	s2.kill()
+	s3 := StartServer(vshost, port(tag, 3))
+	time.Sleep(1 * time.Second)
+	get_done := false
+	go func() {
+		ck.Get("1")
+		get_done = true
+	}()
+	time.Sleep(2 * time.Second)
+	if get_done {
+		t.Fatalf("ck.Get() returned even though no initialized primary")
+	}
+
+	fmt.Printf("  ... Passed\n")
+
+	s1.kill()
+	s2.kill()
+	s3.kill()
+	time.Sleep(time.Second)
+	vs.Kill()
+	time.Sleep(time.Second)
+}
+
+func TestAtMostOnce(t *testing.T) {
+	runtime.GOMAXPROCS(4)
+
+	tag := "csu"
+	vshost := port(tag+"v", 1)
+	vs := viewservice.StartServer(vshost)
+	time.Sleep(time.Second)
+	vck := viewservice.MakeClerk("", vshost)
+
+	fmt.Printf("Test: at-most-once Put; unreliable ...\n")
+
+	const nservers = 1
+	var sa [nservers]*PBServer
+	for i := 0; i < nservers; i++ {
+		sa[i] = StartServer(vshost, port(tag, i+1))
+		sa[i].unreliable = true
+	}
+
+	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
+		view, _ := vck.Get()
+		if view.Primary != "" && view.Backup != "" {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+
+	// give p+b time to ack, initialize
+	time.Sleep(viewservice.PingInterval * viewservice.DeadPings)
+
+	ck := MakeClerk(vshost, "")
+	k := "counter"
+	val := ""
+	for i := 0; i < 100; i++ {
+		v := strconv.Itoa(i)
+		pv := ck.PutHash(k, v)
+		if pv != val {
+			t.Fatalf("ck.Puthash() returned %v but expected %v\n", pv, val)
+		}
+		h := hash(val + v)
+		val = strconv.Itoa(int(h))
+	}
+
+	v := ck.Get(k)
+	if v != val {
+		t.Fatalf("ck.Get() returned %v but expected %v\n", v, val)
+	}
+
+	fmt.Printf("  ... Passed\n")
+
+	for i := 0; i < nservers; i++ {
+		sa[i].kill()
+	}
+	time.Sleep(time.Second)
+	vs.Kill()
+	time.Sleep(time.Second)
+}
+
+// Put right after a backup dies.
+func TestFailPut(t *testing.T) {
+	runtime.GOMAXPROCS(4)
+
+	tag := "failput"
+	vshost := port(tag+"v", 1)
+	vs := viewservice.StartServer(vshost)
+	time.Sleep(time.Second)
+	vck := viewservice.MakeClerk("", vshost)
+
+	s1 := StartServer(vshost, port(tag, 1))
+	time.Sleep(time.Second)
+	s2 := StartServer(vshost, port(tag, 2))
+	time.Sleep(time.Second)
+	s3 := StartServer(vshost, port(tag, 3))
+
+	for i := 0; i < viewservice.DeadPings*3; i++ {
+		v, _ := vck.Get()
+		if v.Primary != "" && v.Backup != "" {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	time.Sleep(time.Second) // wait for backup initializion
+	v1, _ := vck.Get()
+	if v1.Primary != s1.me || v1.Backup != s2.me {
+		t.Fatalf("wrong primary or backup")
+	}
+
+	ck := MakeClerk(vshost, "")
+
+	ck.Put("a", "aa")
+	ck.Put("b", "bb")
+	ck.Put("c", "cc")
+	check(ck, "a", "aa")
+	check(ck, "b", "bb")
+	check(ck, "c", "cc")
+
+	// kill backup, then immediate Put
+	fmt.Printf("Test: Put() immediately after backup failure ...\n")
+	s2.kill()
+	ck.Put("a", "aaa")
+	check(ck, "a", "aaa")
+
+	for i := 0; i < viewservice.DeadPings*3; i++ {
+		v, _ := vck.Get()
+		if v.Viewnum > v1.Viewnum && v.Primary != "" && v.Backup != "" {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	time.Sleep(time.Second) // wait for backup initialization
+	v2, _ := vck.Get()
+	if v2.Primary != s1.me || v2.Backup != s3.me {
+		t.Fatal("wrong primary or backup")
+	}
+
+	check(ck, "a", "aaa")
+	fmt.Printf("  ... Passed\n")
+
+	// kill primary, then immediate Put
+	fmt.Printf("Test: Put() immediately after primary failure ...\n")
+	s1.kill()
+	ck.Put("b", "bbb")
+	check(ck, "b", "bbb")
+
+	for i := 0; i < viewservice.DeadPings*3; i++ {
+		v, _ := vck.Get()
+		if v.Viewnum > v2.Viewnum && v.Primary != "" {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	time.Sleep(time.Second)
+
+	check(ck, "a", "aaa")
+	check(ck, "b", "bbb")
+	check(ck, "c", "cc")
+	fmt.Printf("  ... Passed\n")
+
+	s1.kill()
+	s2.kill()
+	s3.kill()
+	time.Sleep(viewservice.PingInterval * 2)
+	vs.Kill()
+}
 
 // do a bunch of concurrent Put()s on the same key,
 // then check that primary and backup have identical values.
@@ -761,189 +761,189 @@ func proxy(t *testing.T, port string, delay *int) {
 	}()
 }
 
-// func TestPartition1(t *testing.T) {
-// 	runtime.GOMAXPROCS(4)
-//
-// 	tag := "part1"
-// 	vshost := port(tag+"v", 1)
-// 	vs := viewservice.StartServer(vshost)
-// 	time.Sleep(time.Second)
-// 	vck := viewservice.MakeClerk("", vshost)
-//
-// 	ck1 := MakeClerk(vshost, "")
-//
-// 	fmt.Printf("Test: Old primary does not serve Gets ...\n")
-//
-// 	vshosta := vshost + "a"
-// 	os.Link(vshost, vshosta)
-//
-// 	s1 := StartServer(vshosta, port(tag, 1))
-// 	delay := 0
-// 	proxy(t, port(tag, 1), &delay)
-//
-// 	deadtime := viewservice.PingInterval * viewservice.DeadPings
-// 	time.Sleep(deadtime * 2)
-// 	if vck.Primary() != s1.me {
-// 		t.Fatal("primary never formed initial view")
-// 	}
-//
-// 	s2 := StartServer(vshost, port(tag, 2))
-// 	time.Sleep(deadtime * 2)
-// 	v1, _ := vck.Get()
-// 	if v1.Primary != s1.me || v1.Backup != s2.me {
-// 		t.Fatal("backup did not join view")
-// 	}
-//
-// 	ck1.Put("a", "1")
-// 	check(ck1, "a", "1")
-//
-// 	os.Remove(vshosta)
-//
-// 	// start a client Get(), but use proxy to delay it long
-// 	// enough that it won't reach s1 until after s1 is no
-// 	// longer the primary.
-// 	delay = 4
-// 	stale_get := false
-// 	go func() {
-// 		x := ck1.Get("a")
-// 		if x == "1" {
-// 			stale_get = true
-// 		}
-// 	}()
-//
-// 	// now s1 cannot talk to viewserver, so view will change,
-// 	// and s1 won't immediately realize.
-//
-// 	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
-// 		if vck.Primary() == s2.me {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	if vck.Primary() != s2.me {
-// 		t.Fatalf("primary never changed")
-// 	}
-//
-// 	// wait long enough that s2 is guaranteed to have Pinged
-// 	// the viewservice, and thus that s2 must know about
-// 	// the new view.
-// 	time.Sleep(2 * viewservice.PingInterval)
-//
-// 	// change the value (on s2) so it's no longer "1".
-// 	ck2 := MakeClerk(vshost, "")
-// 	ck2.Put("a", "111")
-// 	check(ck2, "a", "111")
-//
-// 	// wait for the background Get to s1 to be delivered.
-// 	time.Sleep(5 * time.Second)
-// 	if stale_get {
-// 		t.Fatalf("Get to old primary succeeded and produced stale value")
-// 	}
-//
-// 	check(ck2, "a", "111")
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	s1.kill()
-// 	s2.kill()
-// 	vs.Kill()
-// }
-//
-// func TestPartition2(t *testing.T) {
-// 	runtime.GOMAXPROCS(4)
-//
-// 	tag := "part2"
-// 	vshost := port(tag+"v", 1)
-// 	vs := viewservice.StartServer(vshost)
-// 	time.Sleep(time.Second)
-// 	vck := viewservice.MakeClerk("", vshost)
-//
-// 	ck1 := MakeClerk(vshost, "")
-//
-// 	vshosta := vshost + "a"
-// 	os.Link(vshost, vshosta)
-//
-// 	s1 := StartServer(vshosta, port(tag, 1))
-// 	delay := 0
-// 	proxy(t, port(tag, 1), &delay)
-//
-// 	fmt.Printf("Test: Partitioned old primary does not complete Gets ...\n")
-//
-// 	deadtime := viewservice.PingInterval * viewservice.DeadPings
-// 	time.Sleep(deadtime * 2)
-// 	if vck.Primary() != s1.me {
-// 		t.Fatal("primary never formed initial view")
-// 	}
-//
-// 	s2 := StartServer(vshost, port(tag, 2))
-// 	time.Sleep(deadtime * 2)
-// 	v1, _ := vck.Get()
-// 	if v1.Primary != s1.me || v1.Backup != s2.me {
-// 		t.Fatal("backup did not join view")
-// 	}
-//
-// 	ck1.Put("a", "1")
-// 	check(ck1, "a", "1")
-//
-// 	os.Remove(vshosta)
-//
-// 	// start a client Get(), but use proxy to delay it long
-// 	// enough that it won't reach s1 until after s1 is no
-// 	// longer the primary.
-// 	delay = 5
-// 	stale_get := false
-// 	go func() {
-// 		x := ck1.Get("a")
-// 		if x == "1" {
-// 			stale_get = true
-// 		}
-// 	}()
-//
-// 	// now s1 cannot talk to viewserver, so view will change.
-//
-// 	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
-// 		if vck.Primary() == s2.me {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	if vck.Primary() != s2.me {
-// 		t.Fatalf("primary never changed")
-// 	}
-//
-// 	s3 := StartServer(vshost, port(tag, 3))
-// 	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
-// 		v, _ := vck.Get()
-// 		if v.Backup == s3.me && v.Primary == s2.me {
-// 			break
-// 		}
-// 		time.Sleep(viewservice.PingInterval)
-// 	}
-// 	v2, _ := vck.Get()
-// 	if v2.Primary != s2.me || v2.Backup != s3.me {
-// 		t.Fatalf("new backup never joined")
-// 	}
-// 	time.Sleep(2 * time.Second)
-//
-// 	ck2 := MakeClerk(vshost, "")
-// 	ck2.Put("a", "2")
-// 	check(ck2, "a", "2")
-//
-// 	s2.kill()
-//
-// 	// wait for delayed get to s1 to complete.
-// 	time.Sleep(6 * time.Second)
-//
-// 	if stale_get == true {
-// 		t.Fatalf("partitioned primary replied to a Get with a stale value")
-// 	}
-//
-// 	check(ck2, "a", "2")
-//
-// 	fmt.Printf("  ... Passed\n")
-//
-// 	s1.kill()
-// 	s2.kill()
-// 	s3.kill()
-// 	vs.Kill()
-// }
+func TestPartition1(t *testing.T) {
+	runtime.GOMAXPROCS(4)
+
+	tag := "part1"
+	vshost := port(tag+"v", 1)
+	vs := viewservice.StartServer(vshost)
+	time.Sleep(time.Second)
+	vck := viewservice.MakeClerk("", vshost)
+
+	ck1 := MakeClerk(vshost, "")
+
+	fmt.Printf("Test: Old primary does not serve Gets ...\n")
+
+	vshosta := vshost + "a"
+	os.Link(vshost, vshosta)
+
+	s1 := StartServer(vshosta, port(tag, 1))
+	delay := 0
+	proxy(t, port(tag, 1), &delay)
+
+	deadtime := viewservice.PingInterval * viewservice.DeadPings
+	time.Sleep(deadtime * 2)
+	if vck.Primary() != s1.me {
+		t.Fatal("primary never formed initial view")
+	}
+
+	s2 := StartServer(vshost, port(tag, 2))
+	time.Sleep(deadtime * 2)
+	v1, _ := vck.Get()
+	if v1.Primary != s1.me || v1.Backup != s2.me {
+		t.Fatal("backup did not join view")
+	}
+
+	ck1.Put("a", "1")
+	check(ck1, "a", "1")
+
+	os.Remove(vshosta)
+
+	// start a client Get(), but use proxy to delay it long
+	// enough that it won't reach s1 until after s1 is no
+	// longer the primary.
+	delay = 4
+	stale_get := false
+	go func() {
+		x := ck1.Get("a")
+		if x == "1" {
+			stale_get = true
+		}
+	}()
+
+	// now s1 cannot talk to viewserver, so view will change,
+	// and s1 won't immediately realize.
+
+	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
+		if vck.Primary() == s2.me {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	if vck.Primary() != s2.me {
+		t.Fatalf("primary never changed")
+	}
+
+	// wait long enough that s2 is guaranteed to have Pinged
+	// the viewservice, and thus that s2 must know about
+	// the new view.
+	time.Sleep(2 * viewservice.PingInterval)
+
+	// change the value (on s2) so it's no longer "1".
+	ck2 := MakeClerk(vshost, "")
+	ck2.Put("a", "111")
+	check(ck2, "a", "111")
+
+	// wait for the background Get to s1 to be delivered.
+	time.Sleep(5 * time.Second)
+	if stale_get {
+		t.Fatalf("Get to old primary succeeded and produced stale value")
+	}
+
+	check(ck2, "a", "111")
+
+	fmt.Printf("  ... Passed\n")
+
+	s1.kill()
+	s2.kill()
+	vs.Kill()
+}
+
+func TestPartition2(t *testing.T) {
+	runtime.GOMAXPROCS(4)
+
+	tag := "part2"
+	vshost := port(tag+"v", 1)
+	vs := viewservice.StartServer(vshost)
+	time.Sleep(time.Second)
+	vck := viewservice.MakeClerk("", vshost)
+
+	ck1 := MakeClerk(vshost, "")
+
+	vshosta := vshost + "a"
+	os.Link(vshost, vshosta)
+
+	s1 := StartServer(vshosta, port(tag, 1))
+	delay := 0
+	proxy(t, port(tag, 1), &delay)
+
+	fmt.Printf("Test: Partitioned old primary does not complete Gets ...\n")
+
+	deadtime := viewservice.PingInterval * viewservice.DeadPings
+	time.Sleep(deadtime * 2)
+	if vck.Primary() != s1.me {
+		t.Fatal("primary never formed initial view")
+	}
+
+	s2 := StartServer(vshost, port(tag, 2))
+	time.Sleep(deadtime * 2)
+	v1, _ := vck.Get()
+	if v1.Primary != s1.me || v1.Backup != s2.me {
+		t.Fatal("backup did not join view")
+	}
+
+	ck1.Put("a", "1")
+	check(ck1, "a", "1")
+
+	os.Remove(vshosta)
+
+	// start a client Get(), but use proxy to delay it long
+	// enough that it won't reach s1 until after s1 is no
+	// longer the primary.
+	delay = 5
+	stale_get := false
+	go func() {
+		x := ck1.Get("a")
+		if x == "1" {
+			stale_get = true
+		}
+	}()
+
+	// now s1 cannot talk to viewserver, so view will change.
+
+	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
+		if vck.Primary() == s2.me {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	if vck.Primary() != s2.me {
+		t.Fatalf("primary never changed")
+	}
+
+	s3 := StartServer(vshost, port(tag, 3))
+	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
+		v, _ := vck.Get()
+		if v.Backup == s3.me && v.Primary == s2.me {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	v2, _ := vck.Get()
+	if v2.Primary != s2.me || v2.Backup != s3.me {
+		t.Fatalf("new backup never joined")
+	}
+	time.Sleep(2 * time.Second)
+
+	ck2 := MakeClerk(vshost, "")
+	ck2.Put("a", "2")
+	check(ck2, "a", "2")
+
+	s2.kill()
+
+	// wait for delayed get to s1 to complete.
+	time.Sleep(6 * time.Second)
+
+	if stale_get == true {
+		t.Fatalf("partitioned primary replied to a Get with a stale value")
+	}
+
+	check(ck2, "a", "2")
+
+	fmt.Printf("  ... Passed\n")
+
+	s1.kill()
+	s2.kill()
+	s3.kill()
+	vs.Kill()
+}

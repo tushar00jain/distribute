@@ -74,12 +74,27 @@ func (pb *PBServer) copy() {
 	fmt.Println("Backup Copy failed")
 }
 
-func (pb *PBServer) replicateGet(args *GetArgs, method string) bool {
+func (pb *PBServer) replicateGet(args *GetArgs, reply *GetReply, method string) bool {
 	if pb.view.Backup == "" {
 		return true
 	}
 
-	var reply GetReply
+	bargs := *args
+	bargs.Me = pb.me
+	ok := call(pb.view.Backup, method, bargs, reply)
+
+	if ok {
+		return true
+	}
+
+	return false
+}
+
+func (pb *PBServer) replicatePut(args *PutArgs, reply *PutReply, method string) bool {
+	if pb.view.Backup == "" {
+		return true
+	}
+
 	bargs := *args
 	bargs.Me = pb.me
 	ok := call(pb.view.Backup, method, bargs, &reply)
@@ -91,38 +106,27 @@ func (pb *PBServer) replicateGet(args *GetArgs, method string) bool {
 	return false
 }
 
-func (pb *PBServer) replicatePut(args *PutArgs, method string) bool {
-	if pb.view.Backup == "" {
-		return true
-	}
-
-	var breply PutReply
-	bargs := *args
-	bargs.Me = pb.me
-	ok := call(pb.view.Backup, method, bargs, &breply)
-
-	if ok {
-		return true
-	}
-
-	return false
-}
-
 func (pb *PBServer) get(args *GetArgs, reply *GetReply) {
 	if val, ok := pb.rand[args.Rand]; ok {
 		// handle duplicates requests
-		reply.Value = val
+		if reply.Value == "" {
+			reply.Value = val
+		}
 		reply.Err = ""
 		return
 	}
 
 	if val, ok := pb.db[args.Key]; ok {
 		// key already exisits
-		reply.Value = val
+		if reply.Value == "" {
+			reply.Value = val
+		}
 		reply.Err = ""
 	} else {
 		// key does not exist
-		reply.Value = ""
+		if reply.Value == "" {
+			reply.Value = ""
+		}
 		reply.Err = ErrNoKey
 	}
 
@@ -132,7 +136,9 @@ func (pb *PBServer) get(args *GetArgs, reply *GetReply) {
 func (pb *PBServer) put(args *PutArgs, reply *PutReply) {
 	if val, ok := pb.rand[args.Rand]; ok {
 		// handle duplicates requests
-		reply.PreviousValue = val
+		if reply.PreviousValue == "" {
+			reply.PreviousValue = val
+		}
 		reply.Err = ""
 		return
 	}
@@ -141,25 +147,33 @@ func (pb *PBServer) put(args *PutArgs, reply *PutReply) {
 		// PutHash
 		if val, ok := pb.db[args.Key]; ok {
 			// key already exists
-			reply.PreviousValue = val
+			if reply.PreviousValue == "" {
+				reply.PreviousValue = val
+			}
 			h := hash(val + args.Value)
 			pb.db[args.Key] = strconv.Itoa(int(h))
 		} else {
 			// key does not exist
-			reply.PreviousValue = ""
+			if reply.PreviousValue == "" {
+				reply.PreviousValue = ""
+			}
 			h := hash(args.Value)
 			pb.db[args.Key] = strconv.Itoa(int(h))
 		}
 	} else {
 		// Put
-		pb.db[args.Key] = args.Value
 		if val, ok := pb.db[args.Key]; ok {
 			// key already exists
-			reply.PreviousValue = val
+			if reply.PreviousValue == "" {
+				reply.PreviousValue = val
+			}
 		} else {
 			// key does not exist
-			reply.PreviousValue = ""
+			if reply.PreviousValue == "" {
+				reply.PreviousValue = ""
+			}
 		}
+		pb.db[args.Key] = args.Value
 	}
 
 	reply.Err = ""
@@ -173,7 +187,7 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
 	if pb.view.Primary == pb.me {
 		// primary server
-		if pb.replicateGet(args, "PBServer.Get") {
+		if pb.replicateGet(args, reply, "PBServer.Get") {
 			// continue if replicated
 			pb.get(args, reply)
 		} else {
@@ -206,7 +220,7 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 
 	if pb.view.Primary == pb.me {
 		// primary server
-		if pb.replicatePut(args, "PBServer.Put") {
+		if pb.replicatePut(args, reply, "PBServer.Put") {
 			// continue if replicated
 			pb.put(args, reply)
 		} else {

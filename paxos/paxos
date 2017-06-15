@@ -44,7 +44,7 @@ type Paxos struct {
 
 	start int // highest seq seen by Start
 
-	instance map[int]Instance // instance information of all the peers
+	instance Instance // instance information of all the peers
 }
 
 type Instance struct {
@@ -57,8 +57,6 @@ type Instance struct {
 }
 
 type PrepareArgs struct {
-	Seq int
-
 	Me  int
 	N   int
 	Err string
@@ -66,6 +64,7 @@ type PrepareArgs struct {
 
 type PrepareReply struct {
 	Me_N int
+	Seq  int
 
 	Me  int
 	N   int
@@ -75,7 +74,6 @@ type PrepareReply struct {
 
 type AcceptArgs struct {
 	Me_N int
-	Seq  int
 
 	Me int
 	N  int
@@ -107,20 +105,16 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 
 	reply.Me = px.me
 
-	instance := px.instance[args.Seq]
+	if (args.N*10 + args.Me) > (px.instance.n_p*10 + px.instance.me_p) {
+		px.instance.me_p = args.Me
+		px.instance.n_p = args.N
 
-	if (args.N) > (instance.n_p) {
-		instance.me_p = args.Me
-		instance.n_p = args.N
-
-		reply.Me_N = instance.me_a
-		reply.N = instance.n_a
-		reply.V = instance.v_a
-
-		px.instance[args.Seq] = instance
+		reply.Me_N = px.instance.me_a
+		reply.N = px.instance.n_a
+		reply.V = px.instance.v_a
 	} else {
-		reply.Me_N = instance.me_p
-		reply.N = instance.n_p
+		reply.Me_N = px.instance.me_p
+		reply.N = px.instance.n_p
 		reply.Err = "Err"
 	}
 
@@ -133,11 +127,8 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 
 	reply.Me = px.me
 
-	instance := px.instance[args.Seq]
-
-	if (args.N) >= (instance.n_p) {
-		instance = Instance{me_p: args.Me_N, me_a: args.Me_N, n_p: args.N, n_a: args.N, v_a: args.V}
-		px.instance[args.Seq] = instance
+	if (args.N*10 + args.Me_N) >= (px.instance.n_p*10 + px.instance.me_p) {
+		px.instance = Instance{me_p: args.Me_N, me_a: args.Me_N, n_p: args.N, n_a: args.N, v_a: args.V}
 
 		reply.N = args.N
 	} else {
@@ -227,7 +218,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 			}
 
 			px.mu.Lock()
-			instance := px.instance[seq]
+			instance := px.instance
 			px.mu.Unlock()
 
 			instance.n_p++
@@ -237,8 +228,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 			alt := false
 
 			for i, peer := range px.peers {
-				args := &PrepareArgs{Me: px.me, N: instance.n_p, Seq: seq}
-
+				args := &PrepareArgs{Me: px.me, N: instance.n_p}
 				var reply PrepareReply
 				var prepare_ok bool
 				if i == px.me {
@@ -247,13 +237,12 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				} else {
 					prepare_ok = call(peer, "Paxos.Prepare", args, &reply)
 				}
-
 				if prepare_ok {
 					if reply.Err == "" {
 						prepare_ok_servers++
-						if (reply.N) > max {
+						if (reply.N*10 + reply.Me_N) > (max) {
 							alt = true
-							max = reply.N
+							max = reply.N*10 + reply.Me_N
 
 							instance.me_a = reply.Me_N
 							instance.n_a = reply.N
@@ -263,10 +252,8 @@ func (px *Paxos) Start(seq int, v interface{}) {
 						px.mu.Lock()
 						// update for next round
 						// need higher that what has already been seen
-						temp := px.instance[seq]
-						temp.me_p = reply.Me_N
-						temp.n_p = reply.N
-						px.instance[seq] = temp
+						px.instance.me_p = reply.Me_N
+						px.instance.n_p = reply.N
 						px.mu.Unlock()
 					}
 				}
@@ -276,9 +263,9 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				accept_ok_servers := 0
 				var args *AcceptArgs
 				if alt {
-					args = &AcceptArgs{Me: px.me, Me_N: px.me, N: instance.n_p, V: instance.v_a, Seq: seq}
+					args = &AcceptArgs{Me: px.me, Me_N: px.me, N: instance.n_p, V: instance.v_a}
 				} else {
-					args = &AcceptArgs{Me: px.me, Me_N: px.me, N: instance.n_p, V: v, Seq: seq}
+					args = &AcceptArgs{Me: px.me, Me_N: px.me, N: instance.n_p, V: v}
 				}
 
 				for i, peer := range px.peers {
@@ -349,7 +336,6 @@ func (px *Paxos) Done(seq int) {
 	for k, _ := range px.values {
 		if k <= min {
 			delete(px.values, k)
-			delete(px.instance, k)
 		}
 	}
 }
@@ -361,9 +347,6 @@ func (px *Paxos) Done(seq int) {
 //
 func (px *Paxos) Max() int {
 	// Your code here.
-	px.mu.Lock()
-	defer px.mu.Unlock()
-
 	return px.start
 }
 
@@ -410,7 +393,6 @@ func (px *Paxos) Min() int {
 	for k, _ := range px.values {
 		if k <= min {
 			delete(px.values, k)
-			delete(px.instance, k)
 		}
 	}
 
@@ -469,7 +451,7 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 		px.done[i] = -1
 	}
 
-	px.instance = make(map[int]Instance)
+	px.instance = Instance{me_p: 0, me_a: 0, n_p: 0, n_a: 0, v_a: nil}
 
 	if rpcs != nil {
 		// caller will create socket &c

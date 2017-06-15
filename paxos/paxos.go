@@ -57,7 +57,8 @@ type Instance struct {
 }
 
 type PrepareArgs struct {
-	Seq int
+	Me_N int
+	Seq  int
 
 	Me  int
 	N   int
@@ -104,12 +105,11 @@ type DecidedReply struct {
 func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	px.mu.Lock()
 	defer px.mu.Unlock()
-
 	reply.Me = px.me
 
 	instance := px.instance[args.Seq]
 
-	if (args.N) > (instance.n_p) {
+	if (args.N*10 + args.Me_N) > (instance.n_p*10 + instance.me_p) {
 		instance.me_p = args.Me
 		instance.n_p = args.N
 
@@ -130,12 +130,11 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 	px.mu.Lock()
 	defer px.mu.Unlock()
-
 	reply.Me = px.me
 
 	instance := px.instance[args.Seq]
 
-	if (args.N) >= (instance.n_p) {
+	if (args.N*10 + args.Me_N) >= (instance.n_p*10 + instance.me_p) {
 		instance = Instance{me_p: args.Me_N, me_a: args.Me_N, n_p: args.N, n_a: args.N, v_a: args.V}
 		px.instance[args.Seq] = instance
 
@@ -190,7 +189,6 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	if err != nil {
 		err1 := err.(*net.OpError)
 		if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
-			// TODO
 			// fmt.Printf("paxos Dial() failed: %v\n", err1)
 		}
 		return false
@@ -220,24 +218,25 @@ func (px *Paxos) Start(seq int, v interface{}) {
 	}
 
 	go func() {
+		px.mu.Lock()
+		n_p := px.instance[seq].n_p
+		v_a := px.instance[seq].v_a
+		px.mu.Unlock()
+
 		for {
 			status_ok, _ := px.Status(seq)
 			if status_ok {
 				return
 			}
 
-			px.mu.Lock()
-			instance := px.instance[seq]
-			px.mu.Unlock()
-
-			instance.n_p++
+			n_p++
 
 			prepare_ok_servers := 0
 			max := 0
 			alt := false
 
 			for i, peer := range px.peers {
-				args := &PrepareArgs{Me: px.me, N: instance.n_p, Seq: seq}
+				args := &PrepareArgs{Me: px.me, Me_N: px.me, N: n_p, Seq: seq}
 
 				var reply PrepareReply
 				var prepare_ok bool
@@ -251,34 +250,23 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				if prepare_ok {
 					if reply.Err == "" {
 						prepare_ok_servers++
-						if (reply.N) > max {
+						if (reply.N*10 + reply.Me_N) > max {
 							alt = true
-							max = reply.N
+							max = reply.N*10 + reply.Me_N
 
-							instance.me_a = reply.Me_N
-							instance.n_a = reply.N
-							instance.v_a = reply.V
+							v_a = reply.V
 						}
 					} else {
-						px.mu.Lock()
-						// update for next round
-						// need higher that what has already been seen
-						temp := px.instance[seq]
-						temp.me_p = reply.Me_N
-						temp.n_p = reply.N
-						px.instance[seq] = temp
-						px.mu.Unlock()
+						n_p = reply.N
 					}
 				}
 			}
 
 			if prepare_ok_servers > len(px.peers)/2 {
 				accept_ok_servers := 0
-				var args *AcceptArgs
+				args := &AcceptArgs{Me: px.me, Me_N: px.me, N: n_p, V: v, Seq: seq}
 				if alt {
-					args = &AcceptArgs{Me: px.me, Me_N: px.me, N: instance.n_p, V: instance.v_a, Seq: seq}
-				} else {
-					args = &AcceptArgs{Me: px.me, Me_N: px.me, N: instance.n_p, V: v, Seq: seq}
+					args.V = v_a
 				}
 
 				for i, peer := range px.peers {
@@ -293,28 +281,21 @@ func (px *Paxos) Start(seq int, v interface{}) {
 					if accept_ok {
 						if reply.Err == "" {
 							accept_ok_servers++
-						} else {
 						}
 					}
 				}
 
 				if accept_ok_servers > len(px.peers)/2 {
 					for i, peer := range px.peers {
-						var args *DecidedArgs
+						args := &DecidedArgs{Me: px.me, Seq: seq, V: v, Done: px.done[px.me]}
 						if alt {
-							args = &DecidedArgs{Me: px.me, Seq: seq, V: instance.v_a, Done: px.done[px.me]}
-						} else {
-							args = &DecidedArgs{Me: px.me, Seq: seq, V: v, Done: px.done[px.me]}
+							args.V = v_a
 						}
 						var reply DecidedReply
-						var decided_ok bool
 						if i == px.me {
 							_ = px.Decided(args, &reply)
-							decided_ok = true
 						} else {
-							decided_ok = call(peer, "Paxos.Decided", args, &reply)
-						}
-						if decided_ok {
+							_ = call(peer, "Paxos.Decided", args, &reply)
 						}
 					}
 				}
@@ -333,25 +314,14 @@ func (px *Paxos) Start(seq int, v interface{}) {
 func (px *Paxos) Done(seq int) {
 	// Your code here.
 	px.mu.Lock()
-	defer px.mu.Unlock()
 
 	if px.done[px.me] < seq {
 		px.done[px.me] = seq
 	}
 
-	min := px.done[px.me]
-	for _, e := range px.done {
-		if e < min {
-			min = e
-		}
-	}
+	px.mu.Unlock()
 
-	for k, _ := range px.values {
-		if k <= min {
-			delete(px.values, k)
-			delete(px.instance, k)
-		}
-	}
+	_ = px.Min()
 }
 
 //

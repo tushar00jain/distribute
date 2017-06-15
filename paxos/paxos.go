@@ -160,6 +160,7 @@ func (px *Paxos) Decided(args *DecidedArgs, reply *DecidedReply) error {
 	}
 
 	// update max seq
+	fmt.Println("DECIDED", args.Seq, "-", args.V, args.Me, "->", px.me)
 	px.values[args.Seq] = args.V
 	if px.start < args.Seq {
 		px.start = args.Seq

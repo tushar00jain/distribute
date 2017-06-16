@@ -59,6 +59,7 @@ type Instance struct {
 type PrepareArgs struct {
 	Me_N int
 	Seq  int
+	V    interface{}
 
 	Me  int
 	N   int
@@ -160,7 +161,6 @@ func (px *Paxos) Decided(args *DecidedArgs, reply *DecidedReply) error {
 	}
 
 	// update max seq
-	fmt.Println("DECIDED", args.Seq, "-", args.V, args.Me, "->", px.me)
 	px.values[args.Seq] = args.V
 	if px.start < args.Seq {
 		px.start = args.Seq
@@ -222,6 +222,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 		px.mu.Lock()
 		n_p := px.instance[seq].n_p
 		v_a := px.instance[seq].v_a
+		next := px.instance[seq].n_p
 		px.mu.Unlock()
 
 		for {
@@ -230,14 +231,15 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				return
 			}
 
-			n_p++
+			next++
+			n_p = next
 
 			prepare_ok_servers := 0
 			max := 0
 			alt := false
 
 			for i, peer := range px.peers {
-				args := &PrepareArgs{Me: px.me, Me_N: px.me, N: n_p, Seq: seq}
+				args := &PrepareArgs{Me: px.me, Me_N: px.me, N: n_p, Seq: seq, V: v}
 
 				var reply PrepareReply
 				var prepare_ok bool
@@ -258,7 +260,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 							v_a = reply.V
 						}
 					} else {
-						n_p = reply.N
+						next = reply.N
 					}
 				}
 			}

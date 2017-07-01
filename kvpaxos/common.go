@@ -15,7 +15,6 @@ type PutArgs struct {
 	DoHash bool // For PutHash
 
 	Rand int64
-	Me   int64
 }
 
 type PutReply struct {
@@ -26,7 +25,6 @@ type PutReply struct {
 type GetArgs struct {
 	Key  string
 	Rand int64
-	Me   int64
 }
 
 type GetReply struct {

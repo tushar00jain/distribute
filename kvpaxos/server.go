@@ -35,8 +35,6 @@ type Op struct {
 
 	Operation operation
 	Rand      int64
-
-	Client int64
 }
 
 type KVPaxos struct {
@@ -51,8 +49,6 @@ type KVPaxos struct {
 
 	rand      map[int64]string
 	last_done int
-
-	replies map[int64]string
 }
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
@@ -61,22 +57,13 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 
 	if val, ok := kv.rand[args.Rand]; ok {
 		reply.Value = val
-		// reply.Value = kv.replies[args.Me]
 		return nil
 	}
 
-	v := Op{Key: args.Key, Operation: GET, Rand: args.Rand, Client: args.Me}
-	seq := kv.wait(v, args.Rand)
-	kv.update(seq)
+	op := Op{Key: args.Key, Value: "", DoHash: false, Operation: GET, Rand: args.Rand}
+	last := kv.update(op)
 
-	if val, ok := kv.db[args.Key]; ok {
-		reply.Value = val
-		kv.rand[args.Rand] = val
-	} else {
-		reply.Err = ErrNoKey
-		kv.rand[args.Rand] = ""
-	}
-	// reply.Value = kv.replies[args.Me]
+	reply.Value = last
 
 	return nil
 }
@@ -87,42 +74,59 @@ func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
 
 	if val, ok := kv.rand[args.Rand]; ok {
 		reply.PreviousValue = val
-		// reply.PreviousValue = kv.replies[args.Me]
 		return nil
 	}
 
-	v := Op{Key: args.Key, Value: args.Value, DoHash: args.DoHash, Operation: PUT, Rand: args.Rand, Client: args.Me}
-	seq := kv.wait(v, args.Rand)
-	kv.update(seq)
+	op := Op{Key: args.Key, Value: args.Value, DoHash: args.DoHash, Operation: PUT, Rand: args.Rand}
+	last := kv.update(op)
 
-	if val, ok := kv.db[args.Key]; ok {
-		reply.PreviousValue = val
-		kv.rand[args.Rand] = val
-	} else {
-		reply.PreviousValue = ""
-		kv.rand[args.Rand] = ""
-	}
-	// reply.PreviousValue = kv.replies[args.Me]
+	reply.PreviousValue = last
 
 	return nil
 }
 
-func (kv *KVPaxos) wait(v Op, rand int64) int {
-	copy := kv.last_done + 1
-	kv.px.Start(copy, v)
-
-	to := 10 * time.Millisecond
+func (kv *KVPaxos) update(op Op) string {
+	var value Op
 	for {
-		decided, value := kv.px.Status(copy)
-		if decided {
-			if value.(Op).Rand != rand {
-				copy++
-				kv.px.Start(copy, v)
-				to = 10 * time.Millisecond
-				continue
-			}
+		if decided, temp := kv.px.Status(kv.last_done + 1); decided {
+			value = temp.(Op)
+		} else {
+			kv.px.Start(kv.last_done+1, op)
+			value = kv.wait(kv.last_done + 1)
+		}
 
-			return copy
+		last := kv.execute(value)
+		kv.last_done++
+		kv.px.Done(kv.last_done)
+
+		if value == op {
+			return last
+		}
+	}
+}
+
+func (kv *KVPaxos) execute(op Op) string {
+	last, _ := kv.db[op.Key]
+	kv.rand[op.Rand] = last
+
+	if op.Operation == PUT {
+		if op.DoHash {
+			kv.db[op.Key] = NextValue(last, op.Value)
+		} else {
+			kv.db[op.Key] = op.Value
+		}
+	}
+
+	return last
+}
+
+func (kv *KVPaxos) wait(seq int) Op {
+	to := 10 * time.Millisecond
+
+	for {
+		decided, value := kv.px.Status(seq)
+		if decided {
+			return value.(Op)
 		}
 
 		time.Sleep(to)
@@ -130,33 +134,6 @@ func (kv *KVPaxos) wait(v Op, rand int64) int {
 			to *= 2
 		}
 	}
-
-}
-
-func (kv *KVPaxos) update(seq int) {
-	// for i := kv.last_done + 1; i < seq+1; i++ {
-	for i := kv.last_done; i < seq; i++ {
-
-		if ok, operation := kv.px.Status(i); ok {
-			op := operation.(Op)
-
-			last, _ := kv.db[op.Key]
-			// kv.replies[op.Client] = last
-
-			if op.Operation == PUT {
-				if op.DoHash {
-					kv.db[op.Key] = NextValue(last, op.Value)
-				} else {
-					kv.db[op.Key] = op.Value
-				}
-			}
-		}
-		// kv.last_done = i
-		// kv.px.Done(i)
-	}
-
-	kv.last_done = seq
-	kv.px.Done(seq)
 }
 
 // tell the server to shut itself down.
@@ -187,8 +164,6 @@ func StartServer(servers []string, me int) *KVPaxos {
 
 	kv.rand = make(map[int64]string)
 	kv.last_done = 0
-
-	kv.replies = make(map[int64]string)
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)

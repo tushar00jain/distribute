@@ -17,14 +17,12 @@ func nrand() int64 {
 
 type Clerk struct {
 	servers []string
-	// You will have to modify this struct.
-	me int64
+	me      int64
 }
 
 func MakeClerk(servers []string) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
-	// You'll have to add code here.
 	ck.me = nrand()
 	return ck
 }
@@ -70,16 +68,16 @@ func call(srv string, rpcname string,
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
 	rand := nrand()
+	args := &GetArgs{Key: key, Rand: rand}
+	var res GetReply
 
 	for {
 		for _, server := range ck.servers {
-			args := &GetArgs{Key: key, Rand: rand, Me: ck.me}
-			var res GetReply
 			if ok := call(server, "KVPaxos.Get", args, &res); ok {
 				return res.Value
 			}
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -90,16 +88,16 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 	// You will have to modify this function.
 	rand := nrand()
+	args := &PutArgs{Key: key, Value: value, DoHash: dohash, Rand: rand}
+	var res PutReply
 
 	for {
 		for _, server := range ck.servers {
-			args := &PutArgs{Key: key, Value: value, DoHash: dohash, Rand: rand, Me: ck.me}
-			var res PutReply
 			if ok := call(server, "KVPaxos.Put", args, &res); ok {
 				return res.PreviousValue
 			}
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 }
 

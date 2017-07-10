@@ -20,41 +20,51 @@ package shardmaster
 // Please don't change this file.
 //
 
+import "crypto/rand"
+import "math/big"
+
 const NShards = 10
 
 type Config struct {
-  Num int // config number
-  Shards [NShards]int64 // gid
-  Groups map[int64][]string // gid -> servers[]
+	Num    int                // config number
+	Shards [NShards]int64     // gid
+	Groups map[int64][]string // gid -> servers[]
 }
 
 type JoinArgs struct {
-  GID int64       // unique replica group ID
-  Servers []string // group server ports
+	GID     int64    // unique replica group ID
+	Servers []string // group server ports
 }
 
 type JoinReply struct {
 }
 
 type LeaveArgs struct {
-  GID int64
+	GID int64
 }
 
 type LeaveReply struct {
 }
 
 type MoveArgs struct {
-  Shard int
-  GID int64
+	Shard int
+	GID   int64
 }
 
 type MoveReply struct {
 }
 
 type QueryArgs struct {
-  Num int // desired config number
+	Num int // desired config number
 }
 
 type QueryReply struct {
-  Config Config
+	Config Config
+}
+
+func nrand() int64 {
+	max := big.NewInt(int64(1) << 62)
+	bigx, _ := rand.Int(rand.Reader, max)
+	x := bigx.Int64()
+	return x
 }
